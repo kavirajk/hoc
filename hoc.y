@@ -1,5 +1,7 @@
 %{
 #include<stdio.h>
+#include<setjmp.h>
+#include<signal.h>
 void yyerror(char *);
 int yylex();
 double mem[26];			/* memory for variables 'a'..'z' */
@@ -10,7 +12,7 @@ double mem[26];			/* memory for variables 'a'..'z' */
 }
 %token	<val>		NUMBER
 %token	<index>		VAR
-%token	<val>		 expr
+%type	<val>		expr
 %right			'='
 %left			'+' '-'	/* left associative, same precedence */
 %left			'*' '/'	/* left associative, higher precedence */
@@ -37,10 +39,10 @@ expr: 		NUMBER { $$ = $1; }
 #include<ctype.h>
 char *progname;
 int lineno=1;
-jum_buf begin;
+jmp_buf begin;
 
 int main(int argc, char *argv[]) {
-    int fpecatch();
+    void fpecatch();
     progname = argv[0];
     setjmp(begin);
     signal(SIGFPE, fpecatch);
@@ -48,12 +50,19 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-execerror(char *s, char *t) {
+void warning(char *s, char *t) {
+    fprintf(stderr, "%s: %s", progname, s);
+    if(t)
+	fprintf(stderr, " %s", t);
+    fprintf(stderr, " near line %d\n", lineno);
+}
+
+void execerror(char *s, char *t) {
     warning(s, t);
     longjmp(begin, 0);
 }
 
-fpecatch() {
+void fpecatch() {
     execerror("floating point exception", (char *)0);
 }
 
@@ -78,12 +87,6 @@ int yylex() {
     return c;
 }
 
-void warning(char *s, char *t) {
-    fprintf(stderr, "%s: %s", progname, s);
-    if(t)
-	fprintf(stderr, " %s", t);
-    fprintf(stderr, " near line %d\n", lineno);
-}
 
 void yyerror(char* s) {
     warning(s, (char *) 0);
