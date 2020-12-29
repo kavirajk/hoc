@@ -2,7 +2,7 @@ YFLAGS = -d
 OBJS = hoc.o code.o init.o math.o symbol.o
 
 hoc3: $(OBJS)
-	cc $(OBJS) -lm -o hoc4
+	cc $(OBJS) -lm -o ./bin/hoc4
 
 hoc.o code.o init.o symbol.o: hoc.h
 
