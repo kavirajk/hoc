@@ -140,4 +140,5 @@ void bltin() {
   Datum d;
   d = pop();
   d.val = (*(double(*)())(*pc++))(d.val);
+  push(d);
 }

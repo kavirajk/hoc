@@ -3,19 +3,21 @@
 #include<setjmp.h>
 #include<signal.h>
 #include"hoc.h"
+Inst *code(Inst);
 void yyerror(char *);
 int yylex();
-extern double Pow();			/* memory for variables 'a'..'z' */
+extern double Pow();			/* memory for variables 'a'..'
+z' */
 void execerror(char *, char *);
 void init();
+#define code2(c1, c2) code(c1); code(c2)
+#define code3(c1, c2, c3) code(c1); code(c2); code(c3)
 %}
 %union {
-    double val;			/* actual value */
     Symbol *sym;		/* symbol table pointer */
+    Inst *inst;			/* machine instruction */
 }
-%token	<val>		NUMBER
-%token	<sym>		VAR BLTIN UNDEF
-%type	<val>		expr asgn
+%token	<sym>		NUMBER VAR BLTIN UNDEF
 %right			'='
 %left			'+' '-'	/* left associative, same precedence */
 %left			'*' '/'	/* left associative, higher precedence */
@@ -24,26 +26,26 @@ void init();
 %%
 list:
 	| 	list '\n'
-	|	list asgn '\n'
-	| 	list expr '\n' { printf("\t%.8g\n", $2); }
+	|	list asgn '\n' { code2(pop, STOP); return 1;}
+	| 	list expr '\n' { code2(print, STOP); return 1; }
 	|	list error '\n' { yyerrok; }
 		;
-asgn:		 VAR '=' expr { $$=$1->u.val=$3; $1->type = VAR; }
+asgn:		 VAR '=' expr { code3(varpush, (Inst)$1, assign); }
 	;
-expr: 		NUMBER
-	|	VAR        { if ($1->type == UNDEF)
-	 execerror("undefined variable", $1->name); $$ = $1->u.val; }
+expr: 		NUMBER { code2(constpush, (Inst)$1); }
+	|	VAR    { code3(varpush, (Inst)$1, eval); }
 	|	asgn
-	|	BLTIN '(' expr ')' { $$ = (*($1->u.ptr))($3);}
-	| 	expr '+' expr  { $$ = $1 + $3; }
-	| 	expr '-' expr  { $$ = $1 - $3; }
-	| 	expr '*' expr  { $$ = $1 * $3; }
-	| 	expr '/' expr  { $$ = $1 / $3; }
-	|	expr '^' expr  { $$ = Pow($1, $3); }
-	| '(' 	expr ')'   { $$ = $2; }
-	|	'-' expr %prec UNARYMINUS { $$ = -$2; }
+	|	BLTIN '(' expr ')' { code2(bltin, (Inst)$1->u.ptr);}
+	| '(' 	expr ')'
 
-		;
+	| 	expr '+' expr  { code(add); }
+	| 	expr '-' expr  { code(sub); }
+	| 	expr '*' expr  { code(mul); }
+	| 	expr '/' expr  { code(divide); }
+	|	expr '^' expr  { code(power); }
+	|	'-'expr %prec UNARYMINUS { code(negate); }
+
+	;
 %%
 #include<stdio.h>
 #include<ctype.h>
@@ -55,9 +57,12 @@ int main(int argc, char *argv[]) {
     void fpecatch();
     progname = argv[0];
     init();
+    void initcode();
+    void execute(Inst *);
     setjmp(begin);
     signal(SIGFPE, fpecatch);
-    yyparse();
+    for (initcode(); yyparse(); initcode())
+	execute(prog);
     return 0;
 }
 
@@ -84,8 +89,10 @@ int yylex() {
     if (c == EOF)
 	return 0;
     if (c == '.' || isdigit(c)) {
+	double d;
 	ungetc(c, stdin);
-	scanf("%lf", &yylval);
+	scanf("%lf", &d);
+	yylval.sym = install("", NUMBER, d);
 	return NUMBER;
     }
     if (isalpha(c)) {
@@ -102,10 +109,6 @@ int yylex() {
 	yylval.sym = s;
 	return s->type == UNDEF ? VAR : s->type;
     }
-    /* if (islower(c)) { */
-    /* 	yylval.index = c - 'a'; */
-    /* 	return VAR; */
-    /* } */
     if (c=='\n')
 	lineno++;
 
